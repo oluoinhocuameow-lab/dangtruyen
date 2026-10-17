@@ -145,7 +145,13 @@
         <div class="ms-note">🖼️ Không giới hạn dung lượng ảnh ở giao diện. Ảnh lớn vẫn phụ thuộc giới hạn Firebase.</div>
       </div>
       <img id="msCoverPreview" class="ms-hidden" alt="Ảnh bìa xem trước" style="width:110px;max-height:160px;object-fit:cover;border-radius:12px;margin-bottom:12px">
-      <div class="ms-field"><label for="msTags">Thể loại / Tags</label><input id="msTags" placeholder="Mạt thế, Dị năng, Hiện Đại..."></div>
+      <div class="ms-field">
+        <label for="msTags">Thể loại / Tags</label>
+        <input id="msTags" list="msSharedTagsList" placeholder="Chọn thể loại có sẵn hoặc tự nhập, cách nhau bằng dấu phẩy...">
+        <datalist id="msSharedTagsList"></datalist>
+        <div class="ms-note" id="msTagsHint">Đang tải danh sách thể loại dùng chung...</div>
+        <div id="msTagChips" class="ms-row" style="margin-top:8px"></div>
+      </div>
       <div class="ms-field"><label for="msSummary">Giới thiệu truyện</label><textarea id="msSummary" placeholder="Giới thiệu nội dung truyện..."></textarea></div>
       <div class="ms-field"><label for="msFullPrice">Giá FULL BỘ (đồng)</label><input id="msFullPrice" type="number" min="0" step="1" value="0"></div>
       <button type="button" class="ms-btn" id="msSaveStory">💗 Lưu thông tin truyện</button>
@@ -326,26 +332,76 @@ function renderSharedTags() {
     option.value = tag;
     list.appendChild(option);
 
-    const chip = document.createElement("button");
-    chip.type = "button";
-    chip.className = "ms-btn alt";
-    chip.style.fontSize = "11px";
-    chip.style.padding = "6px 9px";
-    chip.textContent = tag;
-    chip.title = "Bấm để thêm thể loại này";
-    chip.addEventListener("click", () => {
+    const pill = document.createElement("span");
+    pill.style.cssText = "display:inline-flex;align-items:center;gap:5px;background:#fff0f8;border:1px solid #f0cde5;border-radius:18px;padding:3px 5px 3px 9px;margin:2px";
+
+    const addBtn = document.createElement("button");
+    addBtn.type = "button";
+    addBtn.textContent = tag;
+    addBtn.title = "Bấm để thêm thể loại này vào truyện";
+    addBtn.style.cssText = "border:0;background:transparent;color:#a85d91;font:inherit;font-size:11px;font-weight:700;cursor:pointer;padding:3px 0";
+    addBtn.addEventListener("click", () => {
       const selected = normalizeTags($("msTags").value);
       if (!selected.some(item => item.toLocaleLowerCase("vi") === tag.toLocaleLowerCase("vi"))) {
         selected.push(tag);
       }
       $("msTags").value = selected.join(", ");
     });
-    chips.appendChild(chip);
+
+    const removeBtn = document.createElement("button");
+    removeBtn.type = "button";
+    removeBtn.textContent = "×";
+    removeBtn.title = "Xóa thể loại này khỏi danh sách dùng chung";
+    removeBtn.setAttribute("aria-label", "Xóa thể loại " + tag);
+    removeBtn.style.cssText = "border:0;border-radius:50%;width:20px;height:20px;background:#ffe0ec;color:#bd477e;font-weight:900;cursor:pointer;line-height:1;padding:0";
+    removeBtn.addEventListener("click", async () => {
+      if (!confirm('Xóa thể loại "' + tag + '" khỏi danh sách dùng chung?')) return;
+      try {
+        const updated = sharedTags.filter(item => item.toLocaleLowerCase("vi") !== tag.toLocaleLowerCase("vi"));
+        await set(ref(db, "settings/tags"), updated);
+        sharedTags = updated;
+        renderSharedTags();
+        message('Đã xóa thể loại "' + tag + '" khỏi danh sách dùng chung.');
+      } catch (err) {
+        message("Không xóa được thể loại: " + err.message);
+      }
+    });
+
+    pill.append(addBtn, removeBtn);
+    chips.appendChild(pill);
   });
 
   $("msTagsHint").textContent = sharedTags.length
-    ? "Thể loại đồng bộ từ Đăng truyện: bấm nhãn để thêm hoặc tự nhập, phân cách bằng dấu phẩy."
-    : "Chưa có thể loại chung tại settings/tags. Nhập thể loại mới rồi lưu để thêm vào danh sách dùng chung.";
+    ? "Thể loại dùng chung: bấm tên để thêm vào truyện, bấm × để xóa khỏi danh sách. Nhập tag mới rồi nhấn dấu phẩy, Enter hoặc rời ô để thêm."
+    : "Chưa có thể loại chung. Nhập thể loại mới rồi nhấn dấu phẩy, Enter hoặc rời ô để thêm vào danh sách dùng chung.";
+}
+
+/* Tự thêm tag mới vào danh sách Firebase, không thêm trùng (không phân biệt hoa thường). */
+async function addSharedTagsFromInput(commitAll = false) {
+  const input = $("msTags");
+  const raw = input.value;
+  const parts = raw.split(",");
+  const complete = commitAll ? parts : parts.slice(0, -1);
+  const additions = normalizeTags(complete);
+  if (!additions.length) return;
+
+  const merged = [...sharedTags];
+  additions.forEach(tag => {
+    if (!merged.some(item => item.toLocaleLowerCase("vi") === tag.toLocaleLowerCase("vi"))) {
+      merged.push(tag);
+    }
+  });
+
+  if (merged.length !== sharedTags.length) {
+    try {
+      await set(ref(db, "settings/tags"), merged);
+      sharedTags = merged;
+      renderSharedTags();
+      message("Đã tự thêm thể loại mới vào danh sách dùng chung 💗");
+    } catch (err) {
+      message("Không thể thêm thể loại vào danh sách dùng chung: " + err.message);
+    }
+  }
 }
 
 function startTagsListener() {
@@ -361,6 +417,17 @@ function startTagsListener() {
     }
   );
 }
+
+/* Nhập tag mới: dấu phẩy/Enter để thêm ngay; rời ô để chốt tag cuối. */
+$("msTags").addEventListener("input", () => addSharedTagsFromInput(false));
+$("msTags").addEventListener("keydown", e => {
+  if (e.key === "Enter") {
+    e.preventDefault();
+    addSharedTagsFromInput(true);
+  }
+});
+$("msTags").addEventListener("change", () => addSharedTagsFromInput(true));
+$("msTags").addEventListener("blur", () => addSharedTagsFromInput(true));
 
 async function syncSharedTags(tags) {
   const merged = [...sharedTags];
@@ -734,7 +801,8 @@ $("msSaveStory").addEventListener("click", async () => {
 
     const oldInfo = storyCache[id]?.info || storyDataMemory.get(id)?.info || {};
     const cover = coverData || $("msCover").value.trim() || oldInfo.cover || "";
-    const tags = $("msTags").value.split(",").map(t => t.trim()).filter(Boolean);
+    const tags = normalizeTags($("msTags").value);
+    await syncSharedTags(tags);
     const now = Date.now();
 
     const info = {
