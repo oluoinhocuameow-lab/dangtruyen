@@ -85,6 +85,10 @@
   #meowStudio h2{font-size:20px}
   #meowStudio .ms-editor{height:420px;max-height:65vh;padding:14px}
 }
+#meowStudio .ms-end-badges{display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin:8px 0 14px}
+#meowStudio .ms-end-choice{display:inline-flex;align-items:center;gap:6px;margin:0;padding:8px 11px;border:1px dashed #e8bfd8;border-radius:999px;background:#fff8fc;cursor:pointer;font-size:12px}
+#meowStudio .ms-end-choice input{width:16px;height:16px;margin:0;accent-color:#c577a5}
+#meowStudio .ms-end-badges small{width:100%;color:#9a7d97;font-size:11px}
 </style>
 </head>
 <body>
@@ -167,6 +171,11 @@
       <div class="ms-switch">
         <input id="msVip" type="checkbox">
         <label for="msVip">🔒 SET VIP cho chương này</label>
+      </div>
+      <div class="ms-end-badges" role="group" aria-label="Nhãn kết thúc chương">
+        <label class="ms-end-choice"><input id="msBadgeHet" type="checkbox"> <span>💚 Hết</span></label>
+        <label class="ms-end-choice"><input id="msBadgeRaw" type="checkbox"> <span>💛 Ngang raw</span></label>
+        <small>Không bắt buộc chọn. Mỗi chương chỉ có thể chọn một nhãn.</small>
       </div>
       <div class="ms-grid">
         <div class="ms-field"><label for="msChapterPrice">Giá chương (đồng)</label><input id="msChapterPrice" type="number" min="0" step="1" value="0"></div>
@@ -492,12 +501,22 @@ function nextChapterId() {
   return String(numericIds.length ? Math.max(...numericIds) + 1 : 1);
 }
 
+/* Hai nhãn không bắt buộc, chỉ được chọn một. */
+$("msBadgeHet").addEventListener("change", () => {
+  if ($("msBadgeHet").checked) $("msBadgeRaw").checked = false;
+});
+$("msBadgeRaw").addEventListener("change", () => {
+  if ($("msBadgeRaw").checked) $("msBadgeHet").checked = false;
+});
+
 /* RESET CHƯƠNG */
 function resetChapterForm() {
   currentChapterId = "";
   $("msChapterSelect").value = "";
   $("msChapterTitle").value = "";
   $("msVip").checked = false;
+  $("msBadgeHet").checked = false;
+  $("msBadgeRaw").checked = false;
   $("msChapterPrice").value = "0";
   $("msChapterPassword").value = "";
   $("msEditor").innerHTML = "";
@@ -698,6 +717,8 @@ $("msChapterSelect").addEventListener("change", e => {
   currentChapterId = id;
   $("msChapterTitle").value = ch.title || "";
   $("msVip").checked = ch.vip === true || ch.vip === 1 || ch.vip === "true";
+  $("msBadgeHet").checked = ch.endBadge === "het";
+  $("msBadgeRaw").checked = ch.endBadge === "ngang_raw";
   $("msChapterPrice").value = Number(ch.price || 0);
   $("msChapterPassword").value = ch.password || "";
   $("msEditor").innerHTML = ch.content || ch.text || ch.body || "";
@@ -866,6 +887,7 @@ $("msSaveChapter").addEventListener("click", async () => {
     const vip = $("msVip").checked;
     const price = priceValue("msChapterPrice");
     const password = $("msChapterPassword").value.trim();
+    const endBadge = $("msBadgeHet").checked ? "het" : ($("msBadgeRaw").checked ? "ngang_raw" : "");
     const content = $("msEditor").innerHTML;
     const now = Date.now();
 
@@ -875,6 +897,7 @@ $("msSaveChapter").addEventListener("click", async () => {
       content,
       vip,
       price,
+      endBadge,
       updatedAt: now
     };
 
@@ -900,6 +923,7 @@ $("msSaveChapter").addEventListener("click", async () => {
 
     message("Đã lưu chương thành công 💗\nSố chương: " + chapterId +
       "\nTên chương: " + title +
+      "\nNhãn chương: " + (endBadge === "het" ? "Hết" : endBadge === "ngang_raw" ? "Ngang raw" : "Không có") +
       "\nVIP: " + (vip ? "BẬT" : "TẮT") +
       "\nGiá: " + price.toLocaleString("vi-VN") + " đ");
   } catch (e) {
