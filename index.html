@@ -112,12 +112,18 @@
     <div class="ms-card">
       <div class="ms-title">01. 📚 Chọn hoặc tạo truyện</div>
       <div class="ms-field">
+        <label for="msStorySearch">🔎 Tìm nhanh truyện</label>
+        <input id="msStorySearch" type="search" placeholder="Nhập tên truyện hoặc ID để tìm..." autocomplete="off">
+      </div>
+      <div class="ms-field">
         <label for="msStorySelect">Truyện trong hệ thống</label>
         <select id="msStorySelect"><option value="">＋ Tạo truyện mới</option></select>
+        <div class="ms-note" id="msStorySearchHint">Nhập từ khóa để lọc danh sách truyện.</div>
       </div>
       <div class="ms-row">
         <button type="button" class="ms-btn alt" id="msNewStory">＋ Truyện mới</button>
         <button type="button" class="ms-btn alt" id="msReload">↻ Tải danh sách truyện</button>
+        <button type="button" class="ms-btn danger" id="msDeleteStory">🗑 Xóa truyện đang chọn</button>
       </div>
     </div>
 
@@ -128,7 +134,7 @@
           <label for="msStoryCode">🐱 Code truyện / ID truyện *</label>
           <input id="msStoryCode" type="text" placeholder="Ví dụ: meow001" autocomplete="off">
         </div>
-        <div class="ms-note">💗 Tự đặt code truyện khi tạo mới.<br>Ví dụ: meow001, truyen001, mat-the-01.<br>Code này được dùng làm ID truyện trên Firebase.<br>Không thể sửa code sau khi tạo truyện.</div>
+        <div class="ms-note">💗 ID tự tạo từ tên truyện (ví dụ: “ANH TRAI” → anhtrai). Bà vẫn có thể chỉnh ID trước khi lưu. ID được dùng trên Firebase và không thể sửa sau khi tạo truyện.</div>
       </div>
       <div class="ms-field"><label for="msName">Tên truyện *</label><input id="msName" placeholder="Nhập tên truyện"></div>
       <div class="ms-grid">
@@ -168,6 +174,7 @@
         <select id="msChapterSelect"><option value="">＋ Thêm chương mới</option></select>
       </div>
       <div class="ms-field"><label for="msChapterTitle">Tên chương *</label><input id="msChapterTitle" placeholder="Nhập tên chương"></div>
+      <div class="ms-field"><label for="msWordCount">📖 Số chữ trong chương</label><input id="msWordCount" type="number" min="0" value="0" readonly><div class="ms-note">Tự đếm khi soạn và lưu vào Firebase.</div></div>
       <div class="ms-switch">
         <input id="msVip" type="checkbox">
         <label for="msVip">🔒 SET VIP cho chương này</label>
@@ -185,6 +192,8 @@
         <label>Thanh công cụ soạn thảo</label>
         <div class="ms-editor-wrap">
           <div class="ms-toolbar">
+            <button type="button" data-cmd="undo" title="Hoàn tác thao tác vừa làm">↶ Hoàn tác</button>
+            <button type="button" data-cmd="redo" title="Làm lại thao tác vừa hoàn tác">↷ Làm lại</button>
             <button type="button" data-cmd="bold"><b>B</b></button>
             <button type="button" data-cmd="italic"><i>I</i></button>
             <button type="button" data-cmd="underline"><u>U</u></button>
@@ -255,6 +264,7 @@ let sharedTags = [];
  * - chapterMemory giữ chương đã tải để chuyển chương không phải đọc lại Firebase.
  */
 const MS_CACHE_KEY = "meowStudio_storyList_v1";
+const MS_LOGIN_KEY = "meowStudio_admin_login_v1";
 const MS_CACHE_TTL = 24 * 60 * 60 * 1000;
 const storyDataMemory = new Map();
 
@@ -485,6 +495,24 @@ function showPreview(src) {
   }
 }
 
+/* TỰ TẠO ID TỪ TÊN TRUYỆN: "ANH TRAI" -> "anhtrai". */
+function makeStoryId(name) {
+  return String(name || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/đ/g, "d").replace(/Đ/g, "d")
+    .toLocaleLowerCase("vi")
+    .replace(/[^a-z0-9_-]+/g, "")
+    .replace(/^[-_]+|[-_]+$/g, "");
+}
+$("msName").addEventListener("input", () => {
+  if (!currentStoryId && !$("msStoryCode").dataset.edited) {
+    $("msStoryCode").value = makeStoryId($("msName").value);
+  }
+});
+$("msStoryCode").addEventListener("input", () => {
+  $("msStoryCode").dataset.edited = $("msStoryCode").value ? "1" : "";
+});
 /* KIỂM TRA CODE TRUYỆN */
 function validStoryCode(code) {
   if (!code || code.trim() !== code) return false;
@@ -509,6 +537,15 @@ $("msBadgeRaw").addEventListener("change", () => {
   if ($("msBadgeRaw").checked) $("msBadgeHet").checked = false;
 });
 
+/* Đếm từ nội dung chương, không tính ảnh và HTML. */
+function updateChapterWordCount() {
+  const text = ($("msEditor").innerText || "").replace(/\u00a0/g, " ").trim();
+  const count = text ? text.split(/\s+/u).filter(Boolean).length : 0;
+  $("msWordCount").value = count;
+  return count;
+}
+$("msEditor").addEventListener("input", updateChapterWordCount);
+
 /* RESET CHƯƠNG */
 function resetChapterForm() {
   currentChapterId = "";
@@ -520,6 +557,7 @@ function resetChapterForm() {
   $("msChapterPrice").value = "0";
   $("msChapterPassword").value = "";
   $("msEditor").innerHTML = "";
+  updateChapterWordCount();
   $("msChapterImageFile").value = "";
 }
 
@@ -530,6 +568,7 @@ function resetStoryForm() {
   coverData = "";
   $("msStorySelect").value = "";
   $("msStoryCode").value = "";
+  $("msStoryCode").dataset.edited = "";
   $("msStoryCode").disabled = false;
   $("msChapterSelect").innerHTML = '<option value="">＋ Thêm chương mới</option>';
   $("msName").value = "";
@@ -549,14 +588,24 @@ function resetStoryForm() {
 function renderStoryOptions() {
   const sel = $("msStorySelect");
   const oldValue = currentStoryId;
+  const keyword = ($("msStorySearch")?.value || "").trim().toLocaleLowerCase("vi");
   sel.innerHTML = '<option value="">＋ Tạo truyện mới</option>';
-  Object.entries(storyCache).forEach(([id, story]) => {
+  const entries = Object.entries(storyCache).filter(([id, story]) => {
+    const name = String(story?.info?.name || ("Truyện " + id));
+    return !keyword || name.toLocaleLowerCase("vi").includes(keyword) ||
+      id.toLocaleLowerCase("vi").includes(keyword);
+  });
+  entries.forEach(([id, story]) => {
     const opt = document.createElement("option");
     opt.value = id;
-    opt.textContent = story?.info?.name || ("Truyện " + id);
+    opt.textContent = (story?.info?.name || ("Truyện " + id)) + " · " + id;
     sel.appendChild(opt);
   });
-  sel.value = oldValue || "";
+  sel.value = oldValue && entries.some(([id]) => id === oldValue) ? oldValue : "";
+  const hint = $("msStorySearchHint");
+  if (hint) hint.textContent = keyword
+    ? "Tìm thấy " + entries.length + " / " + Object.keys(storyCache).length + " truyện phù hợp."
+    : "Có " + entries.length + " truyện. Nhập tên hoặc ID để lọc nhanh.";
 }
 
 /* DANH SÁCH CHƯƠNG */
@@ -620,16 +669,25 @@ function startStoriesListener() {
   );
 }
 
-/* ĐĂNG NHẬP */
+/* ĐĂNG NHẬP: ghi nhớ trên trình duyệt này cho những lần truy cập sau. */
+function enterStudio() {
+  $("msLogin").classList.add("ms-hidden");
+  $("msApp").classList.remove("ms-hidden");
+  startStoriesListener();
+  startTagsListener();
+}
+if (localStorage.getItem(MS_LOGIN_KEY) === "1") {
+  enterStudio();
+}
 $("msLoginBtn").addEventListener("click", () => {
   if ($("msAdminPassword").value !== ADMIN_PASSWORD) {
     alert("Mật khẩu chưa đúng nha Meow 💗");
     return;
   }
-  $("msLogin").classList.add("ms-hidden");
-  $("msApp").classList.remove("ms-hidden");
-  startStoriesListener();
-  startTagsListener();
+  try { localStorage.setItem(MS_LOGIN_KEY, "1"); } catch (e) {
+    message("Trình duyệt không cho lưu trạng thái đăng nhập. Bà có thể cần đăng nhập lại.");
+  }
+  enterStudio();
 });
 
 $("msAdminPassword").addEventListener("keydown", e => {
@@ -663,6 +721,9 @@ $("msStorySelect").addEventListener("change", async e => {
   await loadStory(id);
 });
 
+/* TÌM NHANH TRUYỆN THEO TÊN HOẶC ID */
+$("msStorySearch").addEventListener("input", () => renderStoryOptions());
+
 /* MỞ TRUYỆN: dùng cache trong bộ nhớ nếu có, nếu không thì đọc Firebase */
 async function loadStory(id, forceRefresh = false) {
   try {
@@ -679,6 +740,7 @@ async function loadStory(id, forceRefresh = false) {
     currentStoryId = id;
     $("msStorySelect").value = id;
     $("msStoryCode").value = id;
+    $("msStoryCode").dataset.edited = "1";
     $("msStoryCode").disabled = true;
 
     $("msName").value = info.name || "";
@@ -722,6 +784,7 @@ $("msChapterSelect").addEventListener("change", e => {
   $("msChapterPrice").value = Number(ch.price || 0);
   $("msChapterPassword").value = ch.password || "";
   $("msEditor").innerHTML = ch.content || ch.text || ch.body || "";
+  updateChapterWordCount();
   $("msEditor").scrollTop = 0;
 });
 
@@ -757,6 +820,7 @@ document.querySelectorAll("#meowStudio [data-cmd]").forEach(btn => {
   btn.addEventListener("click", () => {
     $("msEditor").focus();
     document.execCommand(btn.dataset.cmd, false, null);
+    updateChapterWordCount();
   });
 });
 
@@ -775,6 +839,7 @@ $("msChapterImageFile").addEventListener("change", async e => {
     const data = await readDataURL(file);
     $("msEditor").focus();
     document.execCommand("insertImage", false, data);
+    updateChapterWordCount();
     e.target.value = "";
   } catch (err) {
     alert("Không đọc được ảnh: " + err.message);
@@ -863,6 +928,38 @@ $("msSaveStory").addEventListener("click", async () => {
   }
 });
 
+/* XÓA TOÀN BỘ TRUYỆN */
+$("msDeleteStory").addEventListener("click", async () => {
+  if (busy) return;
+  if (!currentStoryId) {
+    alert("Hãy chọn truyện đã có trong hệ thống để xóa.");
+    return;
+  }
+  const id = currentStoryId;
+  const storyName = $("msName").value.trim() || id;
+  if (!confirm('Bà chắc chắn muốn xóa toàn bộ truyện "' + storyName +
+    '" và tất cả chương/VIP bên trong?\\nThao tác này không thể hoàn tác.')) return;
+
+  busy = true;
+  $("msDeleteStory").disabled = true;
+  try {
+    await remove(ref(db, "stories/" + id));
+    storyCache = { ...storyCache };
+    delete storyCache[id];
+    storyDataMemory.delete(id);
+    msCacheSet(MS_CACHE_KEY, msBuildStoryCache(storyCache));
+    currentStoryId = "";
+    resetStoryForm();
+    renderStoryOptions();
+    message('Đã xóa truyện "' + storyName + '" cùng toàn bộ dữ liệu của truyện.');
+  } catch (e) {
+    message("Không xóa được truyện: " + e.message);
+  } finally {
+    busy = false;
+    $("msDeleteStory").disabled = false;
+  }
+});
+
 /* LƯU CHƯƠNG */
 $("msSaveChapter").addEventListener("click", async () => {
   if (busy) return;
@@ -872,11 +969,6 @@ $("msSaveChapter").addEventListener("click", async () => {
   }
 
   const title = $("msChapterTitle").value.trim();
-  if (!title) {
-    alert("Bà nhập tên chương trước nha 💗");
-    $("msChapterTitle").focus();
-    return;
-  }
 
   busy = true;
   $("msSaveChapter").disabled = true;
@@ -889,12 +981,14 @@ $("msSaveChapter").addEventListener("click", async () => {
     const password = $("msChapterPassword").value.trim();
     const endBadge = $("msBadgeHet").checked ? "het" : ($("msBadgeRaw").checked ? "ngang_raw" : "");
     const content = $("msEditor").innerHTML;
+    const wordCount = updateChapterWordCount();
     const now = Date.now();
 
     const chapter = {
       ...old,
       title,
       content,
+      wordCount,
       vip,
       price,
       endBadge,
@@ -923,6 +1017,7 @@ $("msSaveChapter").addEventListener("click", async () => {
 
     message("Đã lưu chương thành công 💗\nSố chương: " + chapterId +
       "\nTên chương: " + title +
+      "\nSố chữ: " + wordCount.toLocaleString("vi-VN") +
       "\nNhãn chương: " + (endBadge === "het" ? "Hết" : endBadge === "ngang_raw" ? "Ngang raw" : "Không có") +
       "\nVIP: " + (vip ? "BẬT" : "TẮT") +
       "\nGiá: " + price.toLocaleString("vi-VN") + " đ");
