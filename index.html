@@ -186,8 +186,9 @@
       </div>
       <div class="ms-grid">
         <div class="ms-field"><label for="msChapterPrice">Giá chương (đồng)</label><input id="msChapterPrice" type="number" min="0" step="1" value="0"></div>
-        <div class="ms-field"><label for="msChapterPassword">Mật khẩu chương (nếu cần)</label><input id="msChapterPassword" type="text" placeholder="Để trống nếu không đặt"></div>
+        <div class="ms-field"><label for="msChapterPoints">⭐ Điểm mở chương</label><input id="msChapterPoints" type="number" min="0" step="1" value="0" placeholder="Ví dụ: 5"><div class="ms-note">Đặt 0 nếu chương không yêu cầu điểm. Khách có tổng điểm tích lũy bằng hoặc cao hơn mức này sẽ được mở chương.</div></div>
       </div>
+      <div class="ms-field"><label for="msChapterPassword">Mật khẩu chương (nếu cần)</label><input id="msChapterPassword" type="text" placeholder="Để trống nếu không đặt"></div>
       <div class="ms-field">
         <label>Thanh công cụ soạn thảo</label>
         <div class="ms-editor-wrap">
@@ -555,6 +556,7 @@ function resetChapterForm() {
   $("msBadgeHet").checked = false;
   $("msBadgeRaw").checked = false;
   $("msChapterPrice").value = "0";
+  $("msChapterPoints").value = "0";
   $("msChapterPassword").value = "";
   $("msEditor").innerHTML = "";
   updateChapterWordCount();
@@ -782,6 +784,7 @@ $("msChapterSelect").addEventListener("change", e => {
   $("msBadgeHet").checked = ch.endBadge === "het";
   $("msBadgeRaw").checked = ch.endBadge === "ngang_raw";
   $("msChapterPrice").value = Number(ch.price || 0);
+  $("msChapterPoints").value = Number(ch.points || 0);
   $("msChapterPassword").value = ch.password || "";
   $("msEditor").innerHTML = ch.content || ch.text || ch.body || "";
   updateChapterWordCount();
@@ -978,6 +981,7 @@ $("msSaveChapter").addEventListener("click", async () => {
     const old = chapterCache[chapterId] || {};
     const vip = $("msVip").checked;
     const price = priceValue("msChapterPrice");
+    const points = priceValue("msChapterPoints");
     const password = $("msChapterPassword").value.trim();
     const endBadge = $("msBadgeHet").checked ? "het" : ($("msBadgeRaw").checked ? "ngang_raw" : "");
     const content = $("msEditor").innerHTML;
@@ -991,6 +995,7 @@ $("msSaveChapter").addEventListener("click", async () => {
       wordCount,
       vip,
       price,
+      points,
       endBadge,
       updatedAt: now
     };
@@ -1020,7 +1025,8 @@ $("msSaveChapter").addEventListener("click", async () => {
       "\nSố chữ: " + wordCount.toLocaleString("vi-VN") +
       "\nNhãn chương: " + (endBadge === "het" ? "Hết" : endBadge === "ngang_raw" ? "Ngang raw" : "Không có") +
       "\nVIP: " + (vip ? "BẬT" : "TẮT") +
-      "\nGiá: " + price.toLocaleString("vi-VN") + " đ");
+      "\nGiá: " + price.toLocaleString("vi-VN") + " đ" +
+      "\nĐiểm mở chương: " + points.toLocaleString("vi-VN") + " điểm");
   } catch (e) {
     message("Không lưu được chương: " + e.message);
   } finally {
